@@ -1,0 +1,62 @@
+# Local Python environments and bundled portable runtime
+/.venv/
+/venv/
+/env/
+/python/
+
+# Python bytecode, caches, and compiled extensions
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.o
+*.obj
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build and packaging artifacts (keep C/Cython source files)
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Generated detections, experiment reports, logs, and trained weights
+/output/
+/tools/inference_results/
+*.log
+events.out.tfevents.*
+
+# Downloaded pretrained weights (keep download instructions)
+/data/pretrained_weights/*
+!/data/pretrained_weights/README.md
+
+# TensorFlow model checkpoints and generated training records
+checkpoint
+checkpoint.*
+*.ckpt
+*.ckpt.*
+*.tfrecord
+*.tfrecords
+*.tfrecord.gz
+*.tfrecords.gz
+
+# Local configuration and secrets (keep example configuration)
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Editor settings and operating system files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

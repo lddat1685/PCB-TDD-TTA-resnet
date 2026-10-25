@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>TDD-Net · PCB Defect Detection</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #8b93a7;
+    --accent: #4f8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  .pill {
+    font-size: 11px; padding: 3px 9px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .pill.ok { color: #6ee7a8; border-color: #2b5c43; }
+  .pill.err { color: #ff8080; border-color: #6b2b2b; }
+  main { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 58px); }
+
+  aside {
+    border-right: 1px solid var(--border); background: var(--panel);
+    padding: 16px; overflow-y: auto;
+  }
+  section { margin-bottom: 22px; }
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 10px;
+  }
+
+  #drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 22px 12px;
+    text-align: center; color: var(--muted); cursor: pointer; transition: .15s;
+  }
+  #drop:hover, #drop.hot { border-color: var(--accent); color: var(--text); background: var(--panel-2); }
+  #drop b { color: var(--text); display: block; margin-bottom: 4px; }
+
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .thumb {
+    width: 58px; height: 58px; border-radius: 6px; overflow: hidden;
+    border: 2px solid transparent; cursor: pointer; position: relative;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb.sel { border-color: var(--accent); }
+
+  label.row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  .cls { display: flex; align-items: center; gap: 8px; padding: 5px 0; cursor: pointer; font-size: 13px; }
+  .cls input { accent-color: var(--accent); }
+  .dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+  .cls .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .btn {
+    width: 100%; padding: 9px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 13px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:disabled { opacity: .5; cursor: default; }
+
+  #stage {
+    position: relative; overflow: auto; display: flex;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #wrap { position: relative; line-height: 0; }
+  #base { display: block; max-width: 100%; border-radius: 4px; }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .box { stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
+  .box.dim { opacity: .12; }
+  .hit { fill: transparent; cursor: pointer; }
+
+  #empty { color: var(--muted); text-align: center; }
+  #empty svg { opacity: .25; }
+
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: #000c; color: #fff; padding: 5px 9px; border-radius: 5px;
+    font-size: 12px; white-space: nowrap;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.sel-row { background: #1f2a3d; }
+  #stats { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TDD-Net · PCB Defect Detection</h1>
+  <span class="sub">FPN + ResNet-101 · 6 defect types</span>
+  <span id="status" class="pill">đang khởi động…</span>
+</header>
+
+<main>
+  <aside>
+    <section>
+      <h2>Ảnh đầu vào</h2>
+      <div id="drop">
+        <b>Kéo thả ảnh vào đây</b>
+        hoặc bấm để chọn · jpg / png / tif
+      </div>
+      <input type="file" id="file" accept="image/*" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+    </section>
+
+    <section>
+      <h2>Ngưỡng tin cậy</h2>
+      <label class="row"><span>Score ≥</span><span id="thv">0.60</span></label>
+      <input type="range" id="th" min="0" max="1" step="0.01" value="0.6">
+      <div id="stats"></div>
+    </section>
+
+    <section>
+      <h2>Loại lỗi</h2>
+      <div id="classes"></div>
+    </section>
+
+    <section>
+      <h2>Kết quả</h2>
+      <table id="dets">
+        <thead><tr><th>Lỗi</th><th>Score</th><th class="num">x1,y1</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Model đang dùng</h2>
+      <div id="model" style="font-size:12px;color:var(--muted)">đang tải…</div>
+    </section>
+
+    <section>
+      <h2>Theo dõi sử dụng + chỉ số</h2>
+      <div id="track" style="font-size:12px;color:var(--muted)">đang tải…</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--muted)">
+        1 forward = 1 đơn vị chi phí (TDD-Net không phải LLM nên không có token).
+        <a href="/api/tracking" target="_blank" style="color:var(--accent)">JSON</a>
+      </div>
+    </section>
+
+    <section>
+      <button class="btn" id="download" disabled>Tải ảnh kết quả</button>
+    </section>
+  </aside>
+
+  <div id="stage">
+    <div id="empty">
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>
+      </svg>
+      <p>Chưa có ảnh. Kéo thả hoặc chọn ảnh để bắt đầu.</p>
+    </div>
+    <div id="wrap" hidden>
+      <img id="base" alt="">
+      <svg id="overlay" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+</main>
+
+<div id="tooltip"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = {
+  files: [],          // {file, url, name}
+  sel: -1,
+  result: null,       // last /api/detect response
+  hidden: new Set(),
+  health: null,
+  loading: false,
+};
+
+// ---------------------------------------------------------------- health
+fetch('/api/health').then(r => r.json()).then(h => {
+  const p = $('#status');
+  if (!h.ok) { p.className = 'pill err'; p.textContent = h.error; return; }
+  state.health = h;
+  p.className = 'pill ok';
+  p.textContent = h.device + ' · ' + h.variables + ' vars';
+  $('#th').value = h.default_threshold;
+  $('#thv').textContent = (+h.default_threshold).toFixed(2);
+  renderClasses();
+}).catch(e => {
+  $('#status').className = 'pill err';
+  $('#status').textContent = 'API lỗi: ' + e;
+});
+
+function renderClasses() {
+  const box = $('#classes');
+  box.innerHTML = '';
+  (state.health ? state.health.classes : []).forEach(c => {
+    const el = document.createElement('label');
+    el.className = 'cls';
+    el.innerHTML = `<input type="checkbox" data-id="${c.id}" checked>
+      <span class="dot" style="background:${c.color}"></span>
+      <span>${c.name}</span><span class="count" data-c="${c.name}"></span>`;
+    el.querySelector('input').onchange = e => {
+      e.target.checked ? state.hidden.delete(c.id) : state.hidden.add(c.id);
+      draw();
+    };
+    box.appendChild(el);
+  });
+}
+
+// ---------------------------------------------------------------- model + tracking
+fetch('/api/model').then(r => r.json()).then(m => {
+  if (!m.ok) return;
+  $('#model').innerHTML =
+    `<b style="color:var(--text)">${m.version}</b> · ${m.net}<br>` +
+    `${m.backbone}<br>` +
+    `ckpt: ${m.checkpoint_mb} MB · thr ${m.default_threshold} · ${m.device_note} · TF ${m.tf_version}`;
+}).catch(() => { $('#model').textContent = 'không tải được /api/model'; });
+
+function loadTracking() {
+  fetch('/api/tracking').then(r => r.json()).then(t => {
+    if (!t.ok || !t.phases.length) { $('#track').textContent = 'chưa có phase — chạy tools/phase_loop.py'; return; }
+    let h = `<table><thead><tr><th>Phase</th><th class="num">fwd</th><th class="num">ms/ảnh</th><th class="num">box</th><th class="num">P</th><th class="num">R</th><th class="num">F1</th></tr></thead><tbody>`;
+    t.phases.forEach(p => {
+      const f = v => (v === null || v === undefined) ? '-' : (+v).toFixed(3);
+      const best = (p.id === t.best_id) ? ' style="color:#6ee7a8;font-weight:700"' : '';
+      h += `<tr><td title="${(p.name || '').replace(/"/g, '')}"><b${best}>${p.id}</b>${p.id === t.best_id ? ' ★' : ''}</td>` +
+        `<td class="num">${p.forwards}</td><td class="num">${p.ms_per_img}</td><td class="num">${p.boxes}</td>` +
+        `<td class="num">${f(p.p)}</td><td class="num">${f(p.r)}</td><td class="num"${best}>${f(p.f)}</td></tr>`;
+    });
+    $('#track').innerHTML = h + '</tbody></table>';
+  }).catch(() => { $('#track').textContent = 'không tải được /api/tracking'; });
+}
+loadTracking();
+
+// ---------------------------------------------------------------- files
+const drop = $('#drop'), fileInput = $('#file');
+drop.onclick = () => fileInput.click();
+['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add('hot');
+}));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove('hot');
+}));
+drop.addEventListener('drop', e => addFiles(e.dataTransfer.files));
+fileInput.onchange = e => addFiles(e.target.files);
+
+function addFiles(list) {
+  [...list].filter(f => f.type.startsWith('image/')).forEach(f => {
+    state.files.push({ file: f, url: URL.createObjectURL(f), name: f.name });
+  });
+  renderThumbs();
+  if (state.sel < 0 && state.files.length) select(0);
+}
+
+function renderThumbs() {
+  const t = $('#thumbs');
+  t.innerHTML = '';
+  state.files.forEach((f, i) => {
+    const d = document.createElement('div');
+    d.className = 'thumb' + (i === state.sel ? ' sel' : '');
+    d.title = f.name;
+    d.innerHTML = `<img src="${f.url}">`;
+    d.onclick = () => select(i);
+    t.appendChild(d);
+  });
+}
+
+function select(i) {
+  state.sel = i;
+  renderThumbs();
+  detect();
+}
+
+// ---------------------------------------------------------------- detect
+$('#th').oninput = e => {
+  $('#thv').textContent = (+e.target.value).toFixed(2);
+  if (state.result) detect();   // threshold is a graph tensor -> cheap re-run
+};
+
+async function detect() {
+  if (state.sel < 0 || state.loading) return;
+  state.loading = true;
+  const f = state.files[state.sel];
+  const fd = new FormData();
+  fd.append('image', f.file);
+  fd.append('threshold', $('#th').value);
+  try {
+    const r = await fetch('/api/detect', { method: 'POST', body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    state.result = j;
+    show(j);
+  } catch (e) {
+    $('#status').className = 'pill err';
+    $('#status').textContent = 'Lỗi: ' + e.message;
+  } finally {
+    state.loading = false;
+  }
+}
+
+function show(j) {
+  $('#empty').hidden = true;
+  $('#wrap').hidden = false;
+  $('#base').src = 'data:image/png;base64,' + j.image;
+  $('#download').disabled = false;
+  draw();
+}
+
+// ---------------------------------------------------------------- draw
+function draw() {
+  const j = state.result;
+  if (!j) return;
+  const [w, h] = j.size;
+  const svg = $('#overlay');
+  svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+  const visible = j.detections.filter(d => !state.hidden.has(d.label));
+
+  // class counts in the sidebar
+  document.querySelectorAll('.count').forEach(el => {
+    el.textContent = j.summary[el.dataset.c] || '';
+  });
+
+  const parts = [];
+  svg.innerHTML = '';
+  visible.forEach((d, i) => {
+    const [x1, y1, x2, y2] = d.box;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('class', 'box');
+    rect.setAttribute('x', x1); rect.setAttribute('y', y1);
+    rect.setAttribute('width', Math.max(0, x2 - x1));
+    rect.setAttribute('height', Math.max(0, y2 - y1));
+    rect.setAttribute('stroke', d.color);
+    g.appendChild(rect);
+
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    hit.setAttribute('class', 'hit');
+    hit.setAttribute('x', x1); hit.setAttribute('y', y1);
+    hit.setAttribute('width', Math.max(2, x2 - x1));
+    hit.setAttribute('height', Math.max(2, y2 - y1));
+    hit.dataset.i = i;
+    g.appendChild(hit);
+    svg.appendChild(g);
+  });
+
+  svg.querySelectorAll('.hit').forEach(el => {
+    const d = visible[+el.dataset.i];
+    el.addEventListener('mousemove', e => {
+      const tt = $('#tooltip');
+      tt.style.display = 'block';
+      tt.style.left = (e.clientX + 12) + 'px';
+      tt.style.top = (e.clientY + 12) + 'px';
+      tt.innerHTML = `<b style="color:${d.color}">${d.name}</b> · ${d.score.toFixed(3)}`;
+    });
+    el.addEventListener('mouseleave', () => { $('#tooltip').style.display = 'none'; });
+    el.addEventListener('click', () => {
+      const tr = document.querySelector(`#dets tr[data-i="${visible.indexOf(d)}"]`);
+      if (tr) tr.classList.toggle('sel-row');
+    });
+  });
+
+  // table
+  const tb = $('#dets tbody');
+  tb.innerHTML = '';
+  visible.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    tr.dataset.i = i;
+    tr.innerHTML = `<td><span class="dot" style="display:inline-block;background:${d.color}"></span> ${d.name}</td>
+      <td class="num">${d.score.toFixed(3)}</td>
+      <td class="num">${Math.round(d.box[0])},${Math.round(d.box[1])}</td>`;
+    tr.onmouseenter = () => hover(i, true);
+    tr.onmouseleave = () => hover(i, false);
+    tb.appendChild(tr);
+  });
+
+  const n = visible.length;
+  $('#stats').textContent =
+    `${n} box · ${j.elapsed_ms} ms · ảnh ${j.size[0]}×${j.size[1]}` +
+    (j.original_size && (j.original_size[0] !== j.size[0] || j.original_size[1] !== j.size[1])
+      ? ` (gốc ${j.original_size[0]}×${j.original_size[1]})` : '');
+}
+
+function hover(i, on) {
+  const rects = $('#overlay').querySelectorAll('.box');
+  rects.forEach((r, k) => r.classList.toggle('dim', on && k !== i));
+}
+
+// ---------------------------------------------------------------- export
+$('#download').onclick = () => {
+  const j = state.result;
+  if (!j) return;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const sx = img.width / j.size[0], sy = img.height / j.size[1];
+    g.lineWidth = 3; g.font = '16px sans-serif';
+    j.detections.filter(d => !state.hidden.has(d.label)).forEach(d => {
+      const [x1, y1, x2, y2] = d.box;
+      g.strokeStyle = d.color;
+      g.strokeRect(x1 * sx, y1 * sy, (x2 - x1) * sx, (y2 - y1) * sy);
+      const txt = `${d.name} ${d.score.toFixed(2)}`;
+      const tw = g.measureText(txt).width + 10;
+      g.fillStyle = d.color;
+      g.fillRect(x1 * sx, Math.max(0, y1 * sy - 22), tw, 20);
+      g.fillStyle = '#fff';
+      g.fillText(txt, x1 * sx + 5, Math.max(14, y1 * sy - 7));
+    });
+    c.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = 'tddnet_' + (state.files[state.sel]?.name || 'result.png');
+      a.click();
+    });
+  };
+  img.src = 'data:image/png;base64,' + j.image;
+};
+</script>
+</body>
+</html>
